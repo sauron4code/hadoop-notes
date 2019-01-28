@@ -11,7 +11,7 @@ curl 'http://namenode1:50070/jmx?qry=Hadoop:service=NameNode,name=NameNodeStatus
     "State" : "active",
     "SecurityEnabled" : false,
     "NNRole" : "NameNode",
-    "HostAndPort" : "wlj-namenode1:8020",
+    "HostAndPort" : "namenode1:8020",
     "LastHATransitionTime" : 1543838691590
   } ]
 }
@@ -24,7 +24,7 @@ curl 'http://namenode2:50070/jmx?qry=Hadoop:service=NameNode,name=NameNodeStatus
     "State" : "standby",
     "SecurityEnabled" : false,
     "NNRole" : "NameNode",
-    "HostAndPort" : "wlj-namenode2:8020",
+    "HostAndPort" : "namenode2:8020",
     "LastHATransitionTime" : 0
   } ]
   ```
