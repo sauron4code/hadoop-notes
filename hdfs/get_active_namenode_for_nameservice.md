@@ -31,6 +31,7 @@ curl 'http://namenode2:50070/jmx?qry=Hadoop:service=NameNode,name=NameNodeStatus
 
 ### 获取active namenode有什么用处？
 
+
 例如：ha模式下的hdfs集群间传输文件
 具体命令如下：
 >hadoop  distcp -overwrite ${INPUT_DATA_FILE_DIR} hdfs://${active_namenode}:8020/${INPUT_DATA_FILE_DIR}
