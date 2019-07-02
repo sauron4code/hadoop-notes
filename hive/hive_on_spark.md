@@ -73,7 +73,8 @@ SELECT count(1),ip from spark_merge_16mb GROUP BY ip;
 hive.merge.mapfiles --> 启用
 hive.merge.mapredfiles --> 启用
 hive.merge.sparkfiles  ---> 启用
-hive.merge.smallfiles.avgsize ---> 128Mb（一般设置为hdfs block size，决定hive on spark输出文件的大小）
+hive.merge.smallfiles.avgsize ---> 128Mb
+hive.merge.size.per.task   ---> 128Mb（一般设置为hdfs block size，决定hive on spark输出文件的大小）
 ```
 
 ![avatar](../images/hive_on_spark_small_merge_config.png)
