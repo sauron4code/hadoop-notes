@@ -120,6 +120,44 @@ SELECT rand() as id , * from def;
 
 
 
+#### 5.hive 合并小文件配置
+
+```
+hive.merge.mapfiles
+Default Value: true
+Added In: Hive 0.4.0
+Merge small files at the end of a map-only job.
+-----------------------------------------------
+hive.merge.mapredfiles
+Default Value: false
+Added In: Hive 0.4.0
+Merge small files at the end of a map-reduce job.
+-----------------------------------------------
+hive.mergejob.maponly
+Default Value: true
+Added In: Hive 0.6.0
+Removed In: Hive 0.11.0
+Try to generate a map-only job for merging files if CombineHiveInputFormat is supported. (This configuration property was removed in release 0.11.0.)
+-----------------------------------------------
+hive.merge.size.per.task
+Default Value: 256000000
+Added In: Hive 0.4.0
+Size of merged files at the end of the job.
+-----------------------------------------------
+hive.merge.smallfiles.avgsize
+Default Value: 16000000
+Added In: Hive 0.5.0
+When the average output file size of a job is less than this number, Hive will start an additional map-reduce job to merge the output files into bigger files. This is only done for map-only jobs if hive.merge.mapfiles is true, and for map-reduce jobs if hive.merge.mapredfiles is true.
+-----------------------------------------------
+hive.merge.sparkfiles
+Default Value: false
+Added In: Hive 1.1.0 with HIVE-7810
+Merge small files at the end of a Spark DAG Transformation.
+```
+
+
+
+
 
 
 
