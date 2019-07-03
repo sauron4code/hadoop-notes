@@ -10,7 +10,7 @@ cdh6.1.0
 
 #### 2.开启hive on spark功能
  
-* 集群中添加spark服务，每台node manager添加spark gateway角色，如下图
+* 集群中添加spark服务，为每台node manager所在的机器添加spark gateway角色，如下图
 
 ![avatar](../images/spark_roles.png)
 
