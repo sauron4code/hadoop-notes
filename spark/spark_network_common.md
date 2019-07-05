@@ -293,11 +293,11 @@ ManagedBuffer以字节的形式为数据提供不可变的视图
 * 2.NioManagedBuffer：以NIO ByteBuffer的形式提供数据
 * 3.NettyManagedBuffer：以Netty ByteBuf的形式提供数据 
 
-#### 3.1.3 uml如下图
+##### 3.1.3 uml如下图
 ![avatar](../images/spark/network-common/buffer.png)
 
 
-#### 3.1.4 ManagedBuffer源码注释
+##### 3.1.4 ManagedBuffer源码注释
 
 ```java
 public abstract class ManagedBuffer {
