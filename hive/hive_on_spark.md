@@ -12,7 +12,7 @@ cdh6.1.0
  
 * 集群中添加spark服务，为每台node manager所在的机器添加spark gateway角色，如下图
 
-![avatar](../images/spark_roles.png)
+![avatar](../images/hive_on_spark/spark_roles.png)
 
 * hive中的spark配置，如下列表或者如下图
 
@@ -26,7 +26,7 @@ cdh6.1.0
 
 ```
 
-![avatar](../images/hive_on_spark_config.png)
+![avatar](../images/hive_on_spark/hive_on_spark_config.png)
 
 
 * 重启HiveServer2 & 部署hive客户端配置
@@ -44,7 +44,7 @@ SELECT count(1),ip from spark_merge_16mb GROUP BY ip;
 ```
 * 测试结果如下图：
 
-![avatar](../images/hive_on_mr_test.png)
+![avatar](../images/hive_on_spark/hive_on_mr_test.png)
 
 ---------------------
 
@@ -59,7 +59,7 @@ SELECT count(1),ip from spark_merge_16mb GROUP BY ip;
 
 * 测试结果如下图：
 
-![avatar](../images/hive_on_spark_test.png)
+![avatar](../images/hive_on_spark/hive_on_spark_test.png)
 
 
 #### 4.小文件合并功能
@@ -77,7 +77,7 @@ hive.merge.smallfiles.avgsize ---> 64Mb (仅作测试使用，生产环境请谨
 hive.merge.size.per.task   ---> 100Mb (仅作测试使用，生产环境请谨慎设置)（一般设置为hdfs block size，决定hive on spark输出文件的大小）
 ```
 
-![avatar](../images/hive_on_spark_small_merge_config.png)
+![avatar](../images/hive_on_spark/hive_on_spark_small_merge_config.png)
 
 
 **4.2 重启HiveServer2 & 部署hive客户端配置**
@@ -86,7 +86,7 @@ hive.merge.size.per.task   ---> 100Mb (仅作测试使用，生产环境请谨�
 **4.3测试**
 
 4.3.1 源表def的数据大小如下图（大量小文件）：
-![avatar](../images/hive_on_spark_small_source_table.png)
+![avatar](../images/hive_on_spark/hive_on_spark_small_source_table.png)
 
 4.3.2 测试语句
 
@@ -111,10 +111,10 @@ SELECT rand() as id , * from def;
 
 4.3.3 执行计划如下图：
 可以看出，最后的一个stage是merge task
-![avatar](../images/hive_on_spark_merge_stage.png)
+![avatar](../images/hive_on_spark/hive_on_spark_merge_stage.png)
 
 4.3.4 文件大小如下图：
-![avatar](../images/hive_on_spark_merge_result.png)
+![avatar](../images/hive_on_spark/hive_on_spark_merge_result.png)
 
 > 测试结果符合预期
 
