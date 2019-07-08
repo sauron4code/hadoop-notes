@@ -334,5 +334,77 @@ protocol 定义了消息的协议，例如消息类型，消息编码、解码�
 ##### 3.2.1 uml如下图
 ![avatar](../images/spark/network-common/protocol.png)
 
+##### 3.2.2 消息介绍
+以上uml图看起来非常复杂，其实很简单，接下来从消息的分类、编码解码这两方面来介绍
+
+###### 3.2.2.1 消息分类：
+- client端到server端的Request消息：
+  - ChunkFetchRequest：向server发送获取流中单个块的请求消息
+  - RpcRequest：向server端发送rpc请求消息，由server端的RpcHandler处理
+  - StreamRequest：向server端发送获取流式数据的请求消息
+  - UploadStream：向server端发送带有数据的Rpc请求消息
+
+- server端到client端的Response消息：
+  - Success-Reponse：
+	 - ChunkFetchSuccess：处理ChunkFetchRequest成功后返回的响应消息
+	 - RpcResponse：处理RpcRequest/UploadStream成功后返回的响应消息
+	 - StreamResponse：处理StreamRequest成功后返回的响应消息
+
+  - Fail-Reponse：
+  	 - ChunkFetchFailure：处理ChunkFetchRequest失败后返回的响应消息
+  	 - RpcFailure：处理RpcRequest/UploadStream失败后返回的响应消息
+  	 - StreamFailure：处理StreamRequest失败后返回的响应消息
+
+
+
+- 消息定义在Message类中的枚举类Type，具体代码如下：
+
+   ```java
+	enum Type implements Encodable {
+    	ChunkFetchRequest(0), ChunkFetchSuccess(1), ChunkFetchFailure(2),
+    	RpcRequest(3), RpcResponse(4), RpcFailure(5),
+    	StreamRequest(6), StreamResponse(7), StreamFailure(8),
+    	OneWayMessage(9), UploadStream(10), User(-1);
+
+    	private final byte id;
+
+    	Type(int id) {
+      		assert id < 128 : "Cannot have more than 128 message types";
+     	 	this.id = (byte) id;
+    	}
+	
+    	public byte id() { return id; }
+		
+		//编码后的字节数	
+    	@Override public int encodedLength() { return 1; }
+	
+		// 将Type对象编码到ByteBuf
+    	@Override public void encode(ByteBuf buf) { buf.writeByte(id); }
+
+		// 从ByteBuf解码Type对象
+    	public static Type decode(ByteBuf buf) {
+      		byte id = buf.readByte();
+      		switch (id) {
+        		case 0: return ChunkFetchRequest;
+        		case 1: return ChunkFetchSuccess;
+        		case 2: return ChunkFetchFailure;
+        		case 3: return RpcRequest;
+        		case 4: return RpcResponse;
+        		case 5: return RpcFailure;
+        		case 6: return StreamRequest;
+        		case 7: return StreamResponse;
+        		case 8: return StreamFailure;
+        		case 9: return OneWayMessage;
+        		case 10: return UploadStream;
+        		case -1: throw new IllegalArgumentException("User type messages cannot be decoded.");
+        		default: throw new IllegalArgumentException("Unknown message type: " + id);
+      		}
+    	}
+  ```
+ 
+
+
+
+
  
 
