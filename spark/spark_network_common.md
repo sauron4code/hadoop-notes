@@ -256,6 +256,7 @@ public class MyServer {
 
 #### 2.3 测试结果
 - client端的输出
+
 ```
 rpc response:  RpcRpc
 chunk response: ChunkChunk
@@ -266,9 +267,11 @@ Process finished with exit code 0
 ```
 
 - server端的输出
+
 ```
 Process finished with exit code 0
 ```
+
 --------------------------------------------------------
 
 #### 3. network-common源码的目录结构
@@ -325,7 +328,11 @@ public abstract class ManagedBuffer {
 ```
 --------------------------------------------------------
 
+#### 3.2 protocol
+protocol 定义了消息的协议，例如消息类型，消息编码、解码。
 
+##### 3.2.1 uml如下图
+![avatar](../images/spark/network-common/protocol.png)
 
  
 
