@@ -331,7 +331,8 @@ public abstract class ManagedBuffer {
 #### 3.2 protocol
 protocol 定义了消息的协议，例如消息类型，消息编码、解码。
 
-##### 3.2.1 uml如下图
+##### 3.2.1 <span id="message_uml">uml如下图</span>
+
 ![avatar](../images/spark/network-common/protocol.png)
 
 ##### 3.2.2 消息介绍
@@ -357,7 +358,7 @@ protocol 定义了消息的协议，例如消息类型，消息编码、解码�
 
 
 
-- 消息定义在Message类中的枚举类Type，具体代码如下：
+- 消息类型定义在Message类中的枚举类Type，具体代码如下：
 
    ```java
 	enum Type implements Encodable {
@@ -402,6 +403,36 @@ protocol 定义了消息的协议，例如消息类型，消息编码、解码�
     	}
   ```
  
+- 消息的定义与消息的编码解码（针对单个消息）
+
+	- 消息的定义在Message接口中，如下代码：
+		
+		```java
+			public interface Message extends Encodable {
+  				//消息类型（ChunkRequest,StreamRequest等）
+  				Type type();
+
+  				//可选的消息体
+  				ManagedBuffer body();
+				
+				//标识消息体是否在同一个帧中
+  				boolean isBodyInFrame();
+  				}
+		```
+	- 消息的编码解码
+	   
+	   从[uml](#message_uml)图可以看出，Message接口继承了Encodable接口，所有具体消息都必须实现Encodable接口的encodedLength()，encode方法，这就是消息的编码，同时消息也必须提供decode的静态方法，用于消息的解码（MessageDecoder调用）。Encodable的代码如下：
+	   
+	   ```java
+	   		public interface Encodable {
+  				// 消息编码后的字节数
+  				int encodedLength();
+
+   				// 将此消息编码到ByteBuf
+  				void encode(ByteBuf buf);
+			}
+
+	   ```
 
 
 
