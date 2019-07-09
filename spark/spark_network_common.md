@@ -424,7 +424,7 @@ protocol 定义了消息的协议，例如消息类型，消息编码、解码�
 	   从[uml](#message_uml)图可以看出，Message接口继承了Encodable接口，所有具体消息都必须实现Encodable接口的encodedLength()，encode方法，这就是消息的编码，同时消息也必须提供decode的静态方法，用于消息的解码（MessageDecoder调用）。Encodable的代码如下：
 	   
 	   ```java
-	   		public interface Encodable {
+	   	public interface Encodable {
   				// 消息编码后的字节数
   				int encodedLength();
 
