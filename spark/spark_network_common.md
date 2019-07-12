@@ -439,7 +439,71 @@ protocol 定义了消息的协议，例如消息类型，消息编码、解码�
 --------------------------------------------------------
 
 #### 3.3 TransportContext
-TransportContext是整个network-common模块的入口类，从[MyClient.java](#myclient)，[MyServer.java](#myserver)可以看出来，TransportClientFactory、TransportServer都是由TransportContext创建
+TransportContext是整个network-common模块的入口类，从[MyClient.java](#myclient)，[MyServer.java](#myserver)可以看出来，TransportClientFactory、TransportServer都是由TransportContext创建，TransportContext除了创建TransportClientFactory、TransportServer，还对Netty channel的pipelines进行设置（client 和 server通过channel进行通信），channel pipelines定义了client端、server端的读写流程。
+
+##### 3.3.1 Netty channel pipelines初始化
+
+步骤如下：
+
+	1.创建TransportChannelHandler, TransportChannelHandler代理了TransportResponseHandler，TransportRequestHandler
+
+	2.设置channel pipelines：注册MessageEncoder， TransportFrameDecoder， MessageDecoder， TransportChannelHandler， IdleStateHandler
+
+	3.返回TransportChannelHandler
+
+
+###### 3.3.2 nettty pipeline 执行顺序
+
+```
+ChannelOutboundHandler 按照注册的先后顺序逆序执行
+ChannelInboundHandler  按照注册的先后顺序顺序执行
+```
+
+MessageEncoder， TransportFrameDecoder， MessageDecoder， TransportChannelHandler，IdleStateHandler等类的uml如下图：
+![avatar](../images/spark/network-common/channel_pipelines.png)
+
+- MessageEncoder是ChannelOutboundHandler
+- MessageDecoder是于ChannelInboundHandler
+- TransportChannelHandler是ChannelInboundHandler
+- TransportFrameDecoder是ChannelInboundHandler
+- IdleStateHandler既是ChannelInboundHandler， 也是ChannelOutboundHandler
+
+
+
+###### 3.3.3 主要代码如下：
+
+```java
+
+  public TransportChannelHandler initializePipeline(
+      SocketChannel channel,
+      RpcHandler channelRpcHandler) {
+    try {
+    	
+      TransportChannelHandler channelHandler = createChannelHandler(channel, channelRpcHandler);
+      channel.pipeline()
+        .addLast("encoder", ENCODER)
+        .addLast(TransportFrameDecoder.HANDLER_NAME, NettyUtils.createFrameDecoder())
+        .addLast("decoder", DECODER)
+        .addLast("idleStateHandler", new IdleStateHandler(0, 0, conf.connectionTimeoutMs() / 1000))
+        .addLast("handler", channelHandler);
+      return channelHandler;
+    } catch (RuntimeException e) {
+      logger.error("Error while initializing Netty pipeline", e);
+      throw e;
+    }
+  }
+
+
+  private TransportChannelHandler createChannelHandler(Channel channel, RpcHandler rpcHandler) {
+    TransportResponseHandler responseHandler = new TransportResponseHandler(channel);
+    TransportClient client = new TransportClient(channel, responseHandler);
+    TransportRequestHandler requestHandler = new TransportRequestHandler(channel, client,
+      rpcHandler, conf.maxChunksBeingTransferred());
+    return new TransportChannelHandler(client, responseHandler, requestHandler,
+      conf.connectionTimeoutMs(), closeIdleConnections);
+  }
+
+```
 
 
  
