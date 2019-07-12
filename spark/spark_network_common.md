@@ -463,10 +463,15 @@ MessageEncoder， TransportFrameDecoder， MessageDecoder， TransportChannelHan
 ![avatar](../images/spark/network-common/channel_pipelines.png)
 
 - MessageEncoder是ChannelOutboundHandler
-- MessageDecoder是于ChannelInboundHandler
-- TransportChannelHandler是ChannelInboundHandler
+
 - TransportFrameDecoder是ChannelInboundHandler
+- MessageDecoder是于ChannelInboundHandler
 - IdleStateHandler既是ChannelInboundHandler， 也是ChannelOutboundHandler
+- TransportChannelHandler是ChannelInboundHandler
+
+ChannelOutboundHandler的执行顺序: IdleStateHandler-> MessageEncoder
+
+ChannelInboundHandler的执行顺序：TransportFrameDecoder -> MessageDecoder -> IdleStateHandler -> TransportChannelHandler
 
 
 
