@@ -15,7 +15,7 @@ network-common模块是基于netty实现的节点间通讯框架，spark rpc模�
 ps: 为了方便调试，本人在IntelliJ IDEA上打开了两个spark2.4项目, MyServer.java MyClient.java在不同的项目创建、运行、调试
 ```
 
-#### 2.1 client端代码
+#### 2.1 client端代码<span id="myclient"></span>
 ```scala
 /**
 client使用流程：
@@ -158,7 +158,7 @@ public class MyClient {
 ```
 
 
-#### 2.2 server端代码
+#### 2.2 server端代码<span id="myserver"></span>
 ```scala
 /**
 server使用流程：
@@ -437,6 +437,9 @@ protocol 定义了消息的协议，例如消息类型，消息编码、解码�
 
 
 --------------------------------------------------------
+
+#### 3.3 TransportContext
+TransportContext是整个network-common模块的入口类，从[MyClient.java](#myclient)，[MyServer.java](#myserver)可以看出来，TransportClientFactory、TransportServer都是由TransportContext创建
 
 
  
