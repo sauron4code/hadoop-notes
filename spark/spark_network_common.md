@@ -462,17 +462,19 @@ ChannelInboundHandler  按照注册的先后顺序顺序执行
 MessageEncoder， TransportFrameDecoder， MessageDecoder， TransportChannelHandler，IdleStateHandler等类的uml如下图：
 ![avatar](../images/spark/network-common/channel_pipelines.png)
 
-- MessageEncoder是ChannelOutboundHandler
+- MessageEncoder是ChannelOutboundHandler，消息编码器
 
-- TransportFrameDecoder是ChannelInboundHandler
-- MessageDecoder是于ChannelInboundHandler
-- IdleStateHandler既是ChannelInboundHandler， 也是ChannelOutboundHandler
-- TransportChannelHandler是ChannelInboundHandler
+- TransportFrameDecoder是ChannelInboundHandler，帧解码器(基于tcp/ip的数据传输会有粘包拆包问题，所以需要TransportFrameDecoder将tcp/ip数据流组装成一个有意义的帧)
+- MessageDecoder是于ChannelInboundHandler，消息解码器
+- IdleStateHandler既是ChannelInboundHandler， 也是ChannelOutboundHandler，心跳检测器
+- TransportChannelHandler是ChannelInboundHandler，代理了TransportResponseHandler，TransportRequestHandler，将RequestMessage交给TransportRequestHandler处理，将ResponseMessage交给TransportResponseHandler处理
 
 ChannelOutboundHandler的执行顺序: IdleStateHandler-> MessageEncoder
 
 ChannelInboundHandler的执行顺序：TransportFrameDecoder -> MessageDecoder -> IdleStateHandler -> TransportChannelHandler
 
+
+>ChannelOutbondHandler，ChannelInboundHandler的执行顺序跟角色无关，不管是client,server都会执行ChannelOutbondHandler，ChannelInboundHandler，因为client,server都需要读取数据(执行ChannelInboundHandler)和发送数据(执行ChannelOutbondHandler)
 
 
 ###### 3.3.3 主要代码如下：
