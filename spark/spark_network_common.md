@@ -485,13 +485,18 @@ ChannelInboundHandler的执行顺序：TransportFrameDecoder -> MessageDecoder -
       SocketChannel channel,
       RpcHandler channelRpcHandler) {
     try {
-    	
+    	// 创建TransportChannelHandler
       TransportChannelHandler channelHandler = createChannelHandler(channel, channelRpcHandler);
       channel.pipeline()
+      	 //注册MessageEncoder
         .addLast("encoder", ENCODER)
+        //注册TransportFrameDecoder
         .addLast(TransportFrameDecoder.HANDLER_NAME, NettyUtils.createFrameDecoder())
+        // 注册MessageDecoder
         .addLast("decoder", DECODER)
+        //注册IdleStateHandler
         .addLast("idleStateHandler", new IdleStateHandler(0, 0, conf.connectionTimeoutMs() / 1000))
+        //注册TransportChannelHandler
         .addLast("handler", channelHandler);
       return channelHandler;
     } catch (RuntimeException e) {
@@ -511,6 +516,88 @@ ChannelInboundHandler的执行顺序：TransportFrameDecoder -> MessageDecoder -
   }
 
 ```
+
+
+###### 3.3.4 编码器（发送数据，out方向）
+发送数据主要涉及MessageEncoder， MessageEncoder将Message编码成一帧，帧的格式&代码如下：
+
+```
++---------------------------------+-----------------------------------+
+|            header               |           body                    |
++---------------------------------+-----------------------------------+
+| FrameLength | MsgType | Message |      MessageBody                  |    
++---------------------------------+-----------------------------------+
+```
+
+```java
+public final class MessageEncoder extends MessageToMessageEncoder<Message> {
+
+  private static final Logger logger = LoggerFactory.getLogger(MessageEncoder.class);
+
+  public static final MessageEncoder INSTANCE = new MessageEncoder();
+
+  private MessageEncoder() {}
+
+
+  @Override
+  public void encode(ChannelHandlerContext ctx, Message in, List<Object> out) throws Exception {
+    Object body = null;
+    long bodyLength = 0;
+    boolean isBodyInFrame = false;
+
+    // If the message has a body, take it out to enable zero-copy transfer for the payload.
+    if (in.body() != null) {
+      try {
+        bodyLength = in.body().size();
+        body = in.body().convertToNetty();
+        isBodyInFrame = in.isBodyInFrame();
+      } catch (Exception e) {
+        in.body().release();
+        if (in instanceof AbstractResponseMessage) {
+          AbstractResponseMessage resp = (AbstractResponseMessage) in;
+          // Re-encode this message as a failure response.
+          String error = e.getMessage() != null ? e.getMessage() : "null";
+          logger.error(String.format("Error processing %s for client %s",
+            in, ctx.channel().remoteAddress()), e);
+          encode(ctx, resp.createFailureResponse(error), out);
+        } else {
+          throw e;
+        }
+        return;
+      }
+    }
+	
+	 //消息类型
+    Message.Type msgType = in.type();
+    //计算header长度
+    int headerLength = 8 + msgType.encodedLength() + in.encodedLength();
+    //计算frame长度
+    long frameLength = headerLength + (isBodyInFrame ? bodyLength : 0);
+    //创建header(ByteBuf)
+    ByteBuf header = ctx.alloc().heapBuffer(headerLength);
+    //将frame长度，MessageType，Message编码到header(ByteBuf)
+    header.writeLong(frameLength);
+    msgType.encode(header);
+    in.encode(header);
+    assert header.writableBytes() == 0;
+
+    if (body != null) {
+      out.add(new MessageWithHeader(in.body(), header, body, bodyLength));
+    } else {
+      out.add(header);
+    }
+  }
+
+}
+
+
+```
+
+
+
+
+
+
 
 
  
