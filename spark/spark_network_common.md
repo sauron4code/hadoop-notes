@@ -593,6 +593,22 @@ public final class MessageEncoder extends MessageToMessageEncoder<Message> {
 
 ```
 
+###### 3.3.5 解码器（接收数据，in方向）
+
+接收数据主要涉及以下流程：
+TransportFrameDecoder -> MessageDecoder -> IdleStateHandler -> TransportChannelHandler
+
+TransportFrameDecoder：将tcp/ip数据流组装成一个帧， 因为MessageEncoder将消息编码成帧发送，所以数据接收端需要将数据流组装成一帧数据，然后将这帧数据交给MessageDecoder处理
+
+MessageDecoder：从TransportFrameDecoder接收数据，解码成Message交给TransportChannelHandler处理
+
+TransportChannelHandler：消息（RpcRequest，ChunkRequest等消息）的处理器
+
+
+
+
+
+
 
 
 
