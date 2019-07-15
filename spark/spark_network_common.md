@@ -598,11 +598,227 @@ public final class MessageEncoder extends MessageToMessageEncoder<Message> {
 接收数据主要涉及以下流程：
 TransportFrameDecoder -> MessageDecoder -> IdleStateHandler -> TransportChannelHandler
 
-TransportFrameDecoder：将tcp/ip数据流组装成一个帧， 因为MessageEncoder将消息编码成帧发送，所以数据接收端需要将数据流组装成一帧数据，然后将这帧数据交给MessageDecoder处理
+TransportFrameDecoder：将tcp/ip数据流组装成一个帧， 因为MessageEncoder将消息编码成一帧才发送，所以数据接收端由于tcp/ip粘包拆包问题，所以接受端也需要将接收到tcp/ip数据流组装成一帧数据，然后将这帧数据交给MessageDecoder处理，具体代码如下：
 
-MessageDecoder：从TransportFrameDecoder接收数据，解码成Message交给TransportChannelHandler处理
+```scala
+public class TransportFrameDecoder extends ChannelInboundHandlerAdapter {
 
-TransportChannelHandler：消息（RpcRequest，ChunkRequest等消息）的处理器
+  public static final String HANDLER_NAME = "frameDecoder";
+  private static final int LENGTH_SIZE = 8;
+  private static final int MAX_FRAME_SIZE = Integer.MAX_VALUE;
+  private static final int UNKNOWN_FRAME_SIZE = -1;
+
+  private final LinkedList<ByteBuf> buffers = new LinkedList<>();
+  private final ByteBuf frameLenBuf = Unpooled.buffer(LENGTH_SIZE, LENGTH_SIZE);
+
+  private long totalSize = 0;
+  private long nextFrameSize = UNKNOWN_FRAME_SIZE;
+  private volatile Interceptor interceptor;
+
+  @Override
+  public void channelRead(ChannelHandlerContext ctx, Object data) throws Exception {
+    ByteBuf in = (ByteBuf) data;
+    buffers.add(in);
+    totalSize += in.readableBytes();
+
+    while (!buffers.isEmpty()) {
+    	//如果Interceptor已经安装，使用Interceptor处理数据，用于处理StreamResponse/UploadStream
+      if (interceptor != null) {
+        ByteBuf first = buffers.getFirst();
+        int available = first.readableBytes();
+        if (feedInterceptor(first)) {
+          assert !first.isReadable() : "Interceptor still active but buffer has data.";
+        }
+
+        int read = available - first.readableBytes();
+        if (read == available) {
+          buffers.removeFirst().release();
+        }
+        totalSize -= read;
+      } else {
+		 //对tcp/ip数据流进行解码，组装成一帧数据
+        ByteBuf frame = decodeNext();
+        if (frame == null) {
+          break;
+        }
+        ctx.fireChannelRead(frame);
+      }
+    }
+  }
+
+  private long decodeFrameSize() {
+    // 如果nextFrameSize等于UNKNOWN_FRAME_SIZE（-1：说明上一帧还未完成帧解码） 或者 (ByteBuf) data长度小于LENGTH_SIZE（8字节， FrameLength）， 返回nextFrameSize
+    if (nextFrameSize != UNKNOWN_FRAME_SIZE || totalSize < LENGTH_SIZE) {
+      return nextFrameSize;
+    }
+
+
+    ByteBuf first = buffers.getFirst();
+    //如果ByteBuf可读字节数大于等于LENGTH_SIZE（8）， 直接读取FrameLength，返回FrameLength
+    if (first.readableBytes() >= LENGTH_SIZE) {
+      nextFrameSize = first.readLong() - LENGTH_SIZE;
+      totalSize -= LENGTH_SIZE;
+      if (!first.isReadable()) {
+        buffers.removeFirst().release();
+      }
+      return nextFrameSize;
+    }
+
+    // 如果如果ByteBuf可读字节数小于LENGTH_SIZE（8），将数据缓存到frameLenBuf(ByteBuf)， 当frameLenBuf(ByteBuf)等于LENGTH_SIZE（8）跳出循环
+    while (frameLenBuf.readableBytes() < LENGTH_SIZE) {
+      ByteBuf next = buffers.getFirst();
+      int toRead = Math.min(next.readableBytes(), LENGTH_SIZE - frameLenBuf.readableBytes());
+      frameLenBuf.writeBytes(next, toRead);
+      if (!next.isReadable()) {
+        buffers.removeFirst().release();
+      }
+    }
+    
+    // 读取FrameLength，返回FrameLength
+    nextFrameSize = frameLenBuf.readLong() - LENGTH_SIZE;
+    totalSize -= LENGTH_SIZE;
+    frameLenBuf.clear();
+    return nextFrameSize;
+  }
+
+  private ByteBuf decodeNext() {
+    long frameSize = decodeFrameSize();
+    if (frameSize == UNKNOWN_FRAME_SIZE || totalSize < frameSize) {
+      return null;
+    }
+
+    nextFrameSize = UNKNOWN_FRAME_SIZE;
+
+
+    //如果第一个ByteBuf包含整个帧，直接返回整哥帧
+    int remaining = (int) frameSize;
+    if (buffers.getFirst().readableBytes() >= remaining) {
+      return nextBufferForFrame(remaining);
+    }
+
+    // 如果帧在多个ByteBuf中，将多个ByteBuf数据缓存到CompositeByteBuf，直到解析到一个完整的帧
+    CompositeByteBuf frame = buffers.getFirst().alloc().compositeBuffer(Integer.MAX_VALUE);
+    while (remaining > 0) {
+      ByteBuf next = nextBufferForFrame(remaining);
+      remaining -= next.readableBytes();
+      frame.addComponent(next).writerIndex(frame.writerIndex() + next.readableBytes());
+    }
+    assert remaining == 0;
+    return frame;
+  }
+
+  private ByteBuf nextBufferForFrame(int bytesToRead) {
+    ByteBuf buf = buffers.getFirst();
+    ByteBuf frame;
+
+    if (buf.readableBytes() > bytesToRead) {
+      frame = buf.retain().readSlice(bytesToRead);
+      totalSize -= bytesToRead;
+    } else {
+      frame = buf;
+      buffers.removeFirst();
+      totalSize -= frame.readableBytes();
+    }
+
+    return frame;
+  }
+
+
+  private boolean feedInterceptor(ByteBuf buf) throws Exception {
+    if (interceptor != null && !interceptor.handle(buf)) {
+      interceptor = null;
+    }
+    return interceptor != null;
+  }
+}
+
+```
+
+
+
+MessageDecoder：从TransportFrameDecoder接收数据，解码成Message，然后交给TransportChannelHandler处理，代码如下：
+
+```scala
+public final class MessageDecoder extends MessageToMessageDecoder<ByteBuf> {
+
+  private static final Logger logger = LoggerFactory.getLogger(MessageDecoder.class);
+
+  public static final MessageDecoder INSTANCE = new MessageDecoder();
+
+  private MessageDecoder() {}
+
+  @Override
+  public void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) {
+    //解码MessageType
+    Message.Type msgType = Message.Type.decode(in);
+    //解码Message
+    Message decoded = decode(msgType, in);
+    assert decoded.type() == msgType;
+    logger.trace("Received message {}: {}", msgType, decoded);
+    out.add(decoded);
+  }
+
+  private Message decode(Message.Type msgType, ByteBuf in) {
+    switch (msgType) {
+      case ChunkFetchRequest:
+        return ChunkFetchRequest.decode(in);
+
+      case ChunkFetchSuccess:
+        return ChunkFetchSuccess.decode(in);
+
+      case ChunkFetchFailure:
+        return ChunkFetchFailure.decode(in);
+
+      case RpcRequest:
+        return RpcRequest.decode(in);
+
+      case RpcResponse:
+        return RpcResponse.decode(in);
+
+      case RpcFailure:
+        return RpcFailure.decode(in);
+
+      case OneWayMessage:
+        return OneWayMessage.decode(in);
+
+      case StreamRequest:
+        return StreamRequest.decode(in);
+
+      case StreamResponse:
+        return StreamResponse.decode(in);
+
+      case StreamFailure:
+        return StreamFailure.decode(in);
+
+      case UploadStream:
+        return UploadStream.decode(in);
+
+      default:
+        throw new IllegalArgumentException("Unexpected message type: " + msgType);
+    }
+  }
+}
+```
+
+TransportChannelHandler：消息（RpcRequest，ChunkRequest等消息）的处理器，主要代码如下：
+
+```
+public class TransportChannelHandler extends ChannelInboundHandlerAdapter {
+
+  @Override
+  public void channelRead(ChannelHandlerContext ctx, Object request) throws Exception {
+  	 //如果是RequestMessage， 交给RequestHandler
+    if (request instanceof RequestMessage) {
+      requestHandler.handle((RequestMessage) request);
+    } else if (request instanceof ResponseMessage) {  	 //如果是RequestMessage， 交给ResponseHandler
+      responseHandler.handle((ResponseMessage) request);
+    } else {
+      ctx.fireChannelRead(request);
+    }
+  }
+  
+}  
+```
 
 
 
