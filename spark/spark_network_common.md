@@ -1,21 +1,21 @@
 
 --------------------------------------------------------
-#### 1.network-common介绍
-network-common模块是基于netty实现的节点间通讯框架，spark rpc模块基于network-common模块实现，network-common模块是spark的基石。
+#### 1 network-common介绍
+network-common模块是基于netty实现的节点间通讯框架，spark rpc模块基于network-common模块实现，network-common模块是spark的基石
 
 
 --------------------------------------------------------
-#### 2.使用方式
-为了让读者有个直观的认识，这里写一个测试例子（先从使用开始嘛）
+#### 2 使用方式
+为了让读者有直观的认识，这里写一个测试例子（先从使用开始嘛）
 ```
 环境 
 1. IntelliJ IDEA
 2. spark 2.4
 
-ps: 为了方便调试，本人在IntelliJ IDEA上打开了两个spark2.4项目, MyServer.java MyClient.java在不同的项目创建、运行、调试
+ps: 为了方便调试，本人在IntelliJ IDEA上打开了两个spark2.4项目, MyServer.java MyClient.java在不同的项目创建、运行、调试，这样就能清晰地调试client，server端的代码
 ```
 
-#### 2.1 client端代码<span id="myclient"></span>
+##### 2.1 client端代码<span id="myclient"></span>
 ```scala
 /**
 client使用流程：
@@ -158,7 +158,7 @@ public class MyClient {
 ```
 
 
-#### 2.2 server端代码<span id="myserver"></span>
+##### 2.2 server端代码<span id="myserver"></span>
 ```scala
 /**
 server使用流程：
@@ -254,7 +254,7 @@ public class MyServer {
 ```
 
 
-#### 2.3 测试结果
+##### 2.3 测试结果
 - client端的输出
 
 ```
@@ -274,7 +274,7 @@ Process finished with exit code 0
 
 --------------------------------------------------------
 
-#### 3. network-common源码的目录结构
+#### 3 network-common源码的目录结构
 ```shell
 buffer： 数据缓冲区(一般用于表示消息的内容体(Message body))
 client： client端
@@ -283,24 +283,26 @@ server：server端
 util: 工具类
 ```
 
+--------------------------------------------------------
 
-##### 3.1 buffer
+
+#### 4 buffer
 
 buffer的代码比较简单，涉及ManagedBuffer，FileSegmentManagedBuffer， NettyManagedBuffer， NioManagedBuffer,一般用于表示消息的内容体(Message body)
 
 
-##### 3.1.1 ManagedBuffer
+##### 4.1 ManagedBuffer
 ManagedBuffer以字节的形式为数据提供不可变的视图
-##### 3.1.2 ManagedBuffer三种实现：
+##### 4.2 ManagedBuffer三种实现：
 * 1.FileSegmentManagedBuffer：以文件的形式提供数据
 * 2.NioManagedBuffer：以NIO ByteBuffer的形式提供数据
 * 3.NettyManagedBuffer：以Netty ByteBuf的形式提供数据 
 
-##### 3.1.3 uml如下图
+##### 4.3 uml如下图
 ![avatar](../images/spark/network-common/buffer.png)
 
 
-##### 3.1.4 ManagedBuffer源码注释
+##### 4.4 ManagedBuffer源码注释
 
 ```java
 public abstract class ManagedBuffer {
@@ -328,17 +330,17 @@ public abstract class ManagedBuffer {
 ```
 --------------------------------------------------------
 
-#### 3.2 protocol
+#### 5 protocol
 protocol 定义了消息的协议，例如消息类型，消息编码、解码。
 
-##### 3.2.1 <span id="message_uml">uml如下图</span>
+##### 5.1 <span id="message_uml">uml如下图</span>
 
 ![avatar](../images/spark/network-common/protocol.png)
 
-##### 3.2.2 消息介绍
+##### 5.2 消息介绍
 以上uml图看起来非常复杂，其实很简单，接下来从消息的分类、编码解码这两方面来介绍
 
-###### 3.2.2.1 消息分类：
+###### 5.2.1 消息分类：
 - client端到server端的Request消息：
   - ChunkFetchRequest：向server发送获取流中单个块的请求消息
   - RpcRequest：向server端发送rpc请求消息，由server端的RpcHandler处理
@@ -404,7 +406,7 @@ protocol 定义了消息的协议，例如消息类型，消息编码、解码�
   ```
   
   
-###### 3.2.2.1消息的定义与消息的编码解码（针对单个消息）： 
+###### 5.2.2 消息的定义与消息的编码解码（针对单个消息）： 
 
 - 消息的定义在Message接口中，如下代码：
 
@@ -416,7 +418,7 @@ protocol 定义了消息的协议，例如消息类型，消息编码、解码�
   			//可选的消息体
   			ManagedBuffer body();
 				
-			//标识消息体是否在同一个帧中
+			//标识消息体跟消息是否在同一帧数据
   			boolean isBodyInFrame();
   			}
 	```
@@ -438,10 +440,10 @@ protocol 定义了消息的协议，例如消息类型，消息编码、解码�
 
 --------------------------------------------------------
 
-#### 3.3 TransportContext
-TransportContext是整个network-common模块的入口类，从[MyClient.java](#myclient)，[MyServer.java](#myserver)可以看出来，TransportClientFactory、TransportServer都是由TransportContext创建，TransportContext除了创建TransportClientFactory、TransportServer，还对Netty channel的pipelines进行设置（client 和 server通过channel进行通信），channel pipelines定义了client端、server端的读写流程。
+#### 6 TransportContext
+TransportContext是整个network-common模块的入口类，从[MyClient.java](#myclient)，[MyServer.java](#myserver)可以看出来，TransportClientFactory、TransportServer都是由TransportContext创建，TransportContext除了创建TransportClientFactory、TransportServer，还对Netty channel的pipelines进行设置（client 和 server通过channel进行通信），channel pipelines定义了client端、server端的读写流程
 
-##### 3.3.1 Netty channel pipelines初始化
+##### 6.1 Netty channel pipelines初始化
 
 步骤如下：
 
@@ -452,7 +454,7 @@ TransportContext是整个network-common模块的入口类，从[MyClient.java](#
 	3.返回TransportChannelHandler
 
 
-###### 3.3.2 nettty pipeline 执行顺序
+##### 6.2 nettty pipeline 执行顺序
 
 ```
 ChannelOutboundHandler 按照注册的先后顺序逆序执行
@@ -462,10 +464,10 @@ ChannelInboundHandler  按照注册的先后顺序顺序执行
 MessageEncoder， TransportFrameDecoder， MessageDecoder， TransportChannelHandler，IdleStateHandler等类的uml如下图：
 ![avatar](../images/spark/network-common/channel_pipelines.png)
 
-- MessageEncoder是ChannelOutboundHandler，消息编码器
+- MessageEncoder是ChannelOutboundHandler，消息编码器，发送数据的时候执行
 
-- TransportFrameDecoder是ChannelInboundHandler，帧解码器(基于tcp/ip的数据传输会有粘包拆包问题，所以需要TransportFrameDecoder将tcp/ip数据流组装成一个有意义的帧)
-- MessageDecoder是于ChannelInboundHandler，消息解码器
+- TransportFrameDecoder是ChannelInboundHandler，帧解码器(基于tcp/ip的数据传输会有粘包拆包问题，所以需要TransportFrameDecoder将tcp/ip数据流组装成一个完整的帧)，接收数据的时候执行
+- MessageDecoder是ChannelInboundHandler，消息解码器，接收数据的时候执行
 - IdleStateHandler既是ChannelInboundHandler， 也是ChannelOutboundHandler，心跳检测器
 - TransportChannelHandler是ChannelInboundHandler，代理了TransportResponseHandler，TransportRequestHandler，将RequestMessage交给TransportRequestHandler处理，将ResponseMessage交给TransportResponseHandler处理
 
@@ -474,10 +476,9 @@ ChannelOutboundHandler的执行顺序: IdleStateHandler-> MessageEncoder
 ChannelInboundHandler的执行顺序：TransportFrameDecoder -> MessageDecoder -> IdleStateHandler -> TransportChannelHandler
 
 
->ChannelOutbondHandler，ChannelInboundHandler的执行顺序跟角色无关，不管是client,server都会执行ChannelOutbondHandler，ChannelInboundHandler，因为client,server都需要读取数据(执行ChannelInboundHandler)和发送数据(执行ChannelOutbondHandler)
+>ChannelOutbondHandler，ChannelInboundHandler的执行顺序跟角色无关，不管是client,server都会执行ChannelOutbondHandler，ChannelInboundHandler，因为client,server都需要接收数据(执行ChannelInboundHandler)和发送数据(执行ChannelOutbondHandler)
 
-
-###### 3.3.3 主要代码如下：
+设置Netty channel pipelines的 主要代码如下：
 
 ```java
 
@@ -518,7 +519,7 @@ ChannelInboundHandler的执行顺序：TransportFrameDecoder -> MessageDecoder -
 ```
 
 
-###### 3.3.4 编码器（发送数据，out方向）
+##### 6.3 编码器（发送数据，out方向）
 发送数据主要涉及MessageEncoder， MessageEncoder将Message编码成一帧，帧的格式&代码如下：
 
 ```
@@ -593,12 +594,12 @@ public final class MessageEncoder extends MessageToMessageEncoder<Message> {
 
 ```
 
-###### 3.3.5 解码器（接收数据，in方向）
+##### 6.4 解码器（接收数据，in方向）
 
 接收数据主要涉及以下流程：
 TransportFrameDecoder -> MessageDecoder -> IdleStateHandler -> TransportChannelHandler
 
-TransportFrameDecoder：将tcp/ip数据流组装成一个帧， 因为MessageEncoder将消息编码成一帧才发送，所以数据接收端由于tcp/ip粘包拆包问题，所以接受端也需要将接收到tcp/ip数据流组装成一帧数据，然后将这帧数据交给MessageDecoder处理，具体代码如下：
+TransportFrameDecoder：将tcp/ip数据流组装成一个帧， 因为MessageEncoder将消息编码成一帧才发送，数据接收端由于tcp/ip粘包拆包问题，所以接受端也需要将接收到tcp/ip数据流组装成一帧数据，然后将这帧数据交给MessageDecoder处理，具体代码如下：
 
 ```scala
 public class TransportFrameDecoder extends ChannelInboundHandlerAdapter {
@@ -690,7 +691,7 @@ public class TransportFrameDecoder extends ChannelInboundHandlerAdapter {
     nextFrameSize = UNKNOWN_FRAME_SIZE;
 
 
-    //如果第一个ByteBuf包含整个帧，直接返回整哥帧
+    //如果第一个ByteBuf包含整个帧，直接返回整个帧
     int remaining = (int) frameSize;
     if (buffers.getFirst().readableBytes() >= remaining) {
       return nextBufferForFrame(remaining);
@@ -807,10 +808,10 @@ public class TransportChannelHandler extends ChannelInboundHandlerAdapter {
 
   @Override
   public void channelRead(ChannelHandlerContext ctx, Object request) throws Exception {
-  	 //如果是RequestMessage， 交给RequestHandler
+  	 //如果是RequestMessage， 交给RequestHandler处理
     if (request instanceof RequestMessage) {
       requestHandler.handle((RequestMessage) request);
-    } else if (request instanceof ResponseMessage) {  	 //如果是RequestMessage， 交给ResponseHandler
+    } else if (request instanceof ResponseMessage) {  	 //如果是RequestMessage， 交给ResponseHandler处理
       responseHandler.handle((ResponseMessage) request);
     } else {
       ctx.fireChannelRead(request);
@@ -819,6 +820,12 @@ public class TransportChannelHandler extends ChannelInboundHandlerAdapter {
   
 }  
 ```
+
+至此关于消息的读写流程已经分析得七七八八，接下来将分析Rpc，Stream，Chunk的完整读写流程
+
+--------------------------------------------------------
+
+
 
 
 
