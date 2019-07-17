@@ -298,7 +298,7 @@ ManagedBuffer以字节的形式为数据提供不可变的视图
 * 2.NioManagedBuffer：以NIO ByteBuffer的形式提供数据
 * 3.NettyManagedBuffer：以Netty ByteBuf的形式提供数据 
 
-##### 4.3 uml如下图
+##### 4.3 uml类图如下图
 ![avatar](../images/spark/network-common/buffer.png)
 
 
@@ -333,12 +333,12 @@ public abstract class ManagedBuffer {
 #### 5 protocol
 protocol 定义了消息的协议，例如消息类型，消息编码、解码。
 
-##### 5.1 <span id="message_uml">uml如下图</span>
+##### 5.1 <span id="message_uml">uml类图如下图</span>
 
 ![avatar](../images/spark/network-common/protocol.png)
 
 ##### 5.2 消息介绍
-以上uml图看起来非常复杂，其实很简单，接下来从消息的分类、编码解码这两方面来介绍
+以上uml类图看起来非常复杂，其实很简单，接下来从消息的分类、编码解码这两方面来介绍
 
 ###### 5.2.1 消息分类：
 - client端到server端的Request消息：
@@ -425,7 +425,7 @@ protocol 定义了消息的协议，例如消息类型，消息编码、解码�
 		
 - 消息的编码解码
 	   
-	 从[uml](#message_uml)图可以看出，Message接口继承了Encodable接口，所有具体消息都必须实现Encodable接口的encodedLength()，encode方法，这就是消息的编码，同时消息也必须提供decode的静态方法，用于消息的解码（MessageDecoder调用）。Encodable的代码如下：
+	 从[uml类图](#message_uml)图可以看出，Message接口继承了Encodable接口，所有具体消息都必须实现Encodable接口的encodedLength()，encode方法，这就是消息的编码，同时消息也必须提供decode的静态方法，用于消息的解码（MessageDecoder调用）。Encodable的代码如下：
 	
 	```java
 	   public interface Encodable {
@@ -461,7 +461,7 @@ ChannelOutboundHandler 按照注册的先后顺序逆序执行
 ChannelInboundHandler  按照注册的先后顺序顺序执行
 ```
 
-MessageEncoder， TransportFrameDecoder， MessageDecoder， TransportChannelHandler，IdleStateHandler等类的uml如下图：
+MessageEncoder， TransportFrameDecoder， MessageDecoder， TransportChannelHandler，IdleStateHandler等类的uml类图如下图：
 ![avatar](../images/spark/network-common/channel_pipelines.png)
 
 - MessageEncoder是ChannelOutboundHandler，消息编码器，发送数据的时候执行
