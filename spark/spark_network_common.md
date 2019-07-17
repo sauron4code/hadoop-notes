@@ -1,7 +1,7 @@
 
 --------------------------------------------------------
 #### 1 network-common介绍
-network-common模块是基于netty实现的节点间通讯框架，spark rpc模块基于network-common模块实现，network-common模块是spark的基石
+network-common模块是基于netty实现的节点间通信框架，spark rpc模块基于network-common模块实现，network-common模块是spark的基石
 
 
 --------------------------------------------------------
