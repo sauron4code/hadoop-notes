@@ -129,3 +129,26 @@ Process finished with exit code 0
 ```
 connect from address: 127.0.0.1:58190
 ```
+
+
+#### 3  实现原理
+
+rpc模块基于network-common实现了一套易于使用的通信框架，spark 1.6以前是使用akka作为rpc框架，spark 1.6以及1.6以后将akka移除了，rpc的组件跟akka组件非常相似，RpcEndpoint 对应akka Actor,
+RpcEndpoint 对应akka Actorref, RpcEnv 对应akka ActorSystem
+
+- RpcEndpoint是对rpc通信实体的抽象，所有运行在RpcEnv上的通信实体都应该继承RpcEndpoint
+
+- RpcEndpointRef是指向RpcEndpoint，通过RpcEndpointRef可以向指向的RpcEndpoint发送请求
+
+- RpcEnv管理RpcEndpoint, RpcEndpointRef
+
+	- server端：RpcEnv负责管理RpcEndpoint的生命周期，并将请求路由到特定的RpcEndpoint
+
+	- client端：RpcEnv可以获取RpcEndpoint引用，即RpcEnvRef
+
+RpcEndpoint， RpcEndpointRef， RpcEnv定义的规范，具体实现要需要分析org.apache.spark.rpc.netty下的代码
+
+#### 4  基于network-common的实现
+
+
+
