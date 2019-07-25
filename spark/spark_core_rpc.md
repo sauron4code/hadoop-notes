@@ -152,3 +152,10 @@ RpcEndpoint， RpcEndpointRef， RpcEnv定义的规范，具体实现要需要�
 
 
 
+Inbox： 存储RpcEndpoint的InboxMessage（in方向的消息， new java.util.LinkedList\[InboxMessage]()）
+
+Outbox： 存储RpcEndpointRef的OutboxMessage,（out方向的消息， new java.util.LinkedList\[OutboxMessage]()）
+
+Dispatcher: 消息分发器，将RequestMessage(in方向的消息)路由到正确的RpcEndpoint
+
+NettyRpcEnv: RpcEnv的实现，管理RpcEndpoint， RpcEndpointRef，network-common的TransportContext，TransportClient， TransportServer等
