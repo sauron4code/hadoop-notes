@@ -201,3 +201,9 @@ private[rpc] class NettyRpcEnvFactory extends RpcEnvFactory with Logging {
 * 创建序列化器
 * 创建NettyRpcEnv，这个步骤会初始化Dispatcher，NettyStreamManager，TransportContext，NettyRpcHandler，TransportClientFactory
 * 如果非client模式，启动TransportServer
+
+
+##### 4.2 In方向处理流程
+
+
+##### 4.3 Out方向处理流程
