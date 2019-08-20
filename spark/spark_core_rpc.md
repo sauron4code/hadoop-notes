@@ -226,10 +226,10 @@ private[rpc] class NettyRpcEnvFactory extends RpcEnvFactory with Logging {
 
 ##### 4.2.2 RpcEnv.setupEndpointRef 
 
-RpcEnv.setupEndpointRef 主要的作用是创建EndpointRef，并检查目的Endpoint是否存在，这个通过RpcEndpointVerifier， 每个NettyRpcEnv在启动TransportServer时都会注册RpcEndpointVerifier
+RpcEnv.setupEndpointRef 主要的作用是创建EndpointRef，并检查目的Endpoint是否存在，通过RpcEndpointVerifier完成， 每个NettyRpcEnv在启动TransportServer时都会
 
 
-###### 4.2.2.1 RpcEnv.setupEndpointRef（ 注册RpcEndpointVerifier ）代码如下：
+###### 4.2.2.1  注册RpcEndpointVerifier 代码如下：
 
 ```scala
 
