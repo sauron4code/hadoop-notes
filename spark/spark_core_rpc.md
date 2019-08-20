@@ -199,11 +199,111 @@ private[rpc] class NettyRpcEnvFactory extends RpcEnvFactory with Logging {
 ###### 4.1.2 NettyRpcEnv初始化过程
 
 * 创建序列化器
-* 创建NettyRpcEnv，这个步骤会初始化Dispatcher，NettyStreamManager，TransportContext，NettyRpcHandler，TransportClientFactory
+* 创建NettyRpcEnv，这个步骤会初始化Dispatcher，NettyStreamManager，TransportContext，NettyRpcHandler，TransportClientFactory，注册RpcEndpointVerifier
 * 如果非client模式，启动TransportServer
 
 
-##### 4.2 In方向处理流程
+##### 4.2 Out方向(发送数据)处理流程
+
+##### 4.2.1 Out方向的主要链路的代码
 
 
-##### 4.3 Out方向处理流程
+```
+                  RpcEnv.setupEndpointRef 
+                            |
+                            |
+                            V   
+                   NettyRpcEndpointRef.ask  
+                            |
+                            |
+                            V 
+                     NettyRpcEnv.ask   
+                            |
+                            |
+                            V   
+  Dispatcher.postLocalMessage / NettyRpcEnv.postToOutbox 
+```
+
+##### 4.2.2 RpcEnv.setupEndpointRef 
+
+RpcEnv.setupEndpointRef 主要的作用是创建EndpointRef，并检查目的Endpoint是否存在，这个通过RpcEndpointVerifier， 每个NettyRpcEnv在启动TransportServer时都会注册RpcEndpointVerifier
+
+
+###### 4.2.2.1 RpcEnv.setupEndpointRef（ 注册RpcEndpointVerifier ）代码如下：
+
+```scala
+
+  def startServer(bindAddress: String, port: Int): Unit = {
+    val bootstraps: java.util.List[TransportServerBootstrap] =
+      if (securityManager.isAuthenticationEnabled()) {
+        java.util.Arrays.asList(new AuthServerBootstrap(transportConf, securityManager))
+      } else {
+        java.util.Collections.emptyList()
+      }
+    server = transportContext.createServer(bindAddress, port, bootstraps)
+    //在Dispatcher注册RpcEndpointVerifier
+    dispatcher.registerRpcEndpoint(
+      RpcEndpointVerifier.NAME, new RpcEndpointVerifier(this, dispatcher))
+  }
+  
+```
+
+
+###### 4.2.2.2 创建EndpointRef代码如下：
+
+创建EndpointRef的函数其实是调用了NettyRpcEnv.setupEndpointRefByURI函数进行创建
+
+```scala
+  def setupEndpointRef(address: RpcAddress, endpointName: String): RpcEndpointRef = {
+    setupEndpointRefByURI(RpcEndpointAddress(address, endpointName).toString)
+  }
+  
+```  
+
+NettyRpcEnv.setupEndpointRefByURI函数代码如下：
+
+```scala
+
+  def asyncSetupEndpointRefByURI(uri: String): Future[RpcEndpointRef] = {
+    val addr = RpcEndpointAddress(uri)
+    val endpointRef = new NettyRpcEndpointRef(conf, addr, this)
+    //创建verifier的EndpointRef
+    val verifier = new NettyRpcEndpointRef(
+      conf, RpcEndpointAddress(addr.rpcAddress, RpcEndpointVerifier.NAME), this)
+    //向目标Endpoint发起Rpc请求，检查目标Endpoint是否存在
+    verifier.ask[Boolean](RpcEndpointVerifier.CheckExistence(endpointRef.name)).flatMap { find =>
+      if (find) {
+        Future.successful(endpointRef)
+      } else {
+        Future.failed(new RpcEndpointNotFoundException(uri))
+      }
+    }(ThreadUtils.sameThread)
+  }
+
+```
+
+
+RpcEndpointVerifier代码如下：
+RpcEndpointVerifier的逻辑比较简单  （ps : RpcEndpointVerifier也是一种Rpc的请求，只不过 RpcEndpointVerifier作用在于检查目标Endpoint是否存在）
+
+
+```scala
+private[netty] class RpcEndpointVerifier(override val rpcEnv: RpcEnv, dispatcher: Dispatcher)
+  extends RpcEndpoint {
+
+  override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
+    case RpcEndpointVerifier.CheckExistence(name) => context.reply(dispatcher.verify(name))
+  }
+}
+
+private[netty] object RpcEndpointVerifier {
+  val NAME = "endpoint-verifier"
+  case class CheckExistence(name: String)
+}
+```
+
+###### 4.2.2.3 NettyRpcEndpointRef.ask（向目标Endpoint发送Rpc请求）
+
+
+
+##### 4.3 In方向处(接收数据)理流程
