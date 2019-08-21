@@ -222,11 +222,19 @@ private[rpc] class NettyRpcEnvFactory extends RpcEnvFactory with Logging {
                             |
                             V   
   Dispatcher.postLocalMessage / NettyRpcEnv.postToOutbox 
+                            |
+                            |
+                            V  
+              OutboxMessage / Outbox.send      
+                            |
+                            |
+                            V   
+                    Outbox.drainOutbox      
 ```
 
 ##### 4.2.2 RpcEnv.setupEndpointRef 
 
-RpcEnv.setupEndpointRef 主要的作用是创建EndpointRef，并检查目的Endpoint是否存在，通过RpcEndpointVerifier完成， 每个NettyRpcEnv在启动TransportServer时都会
+RpcEnv.setupEndpointRef 主要的作用是创建EndpointRef，并检查目的Endpoint是否存在，通过RpcEndpointVerifier完成， 每个NettyRpcEnv在启动TransportServer时都会注册RpcEndpointVerifier
 
 
 ###### 4.2.2.1  注册RpcEndpointVerifier 代码如下：
@@ -302,7 +310,279 @@ private[netty] object RpcEndpointVerifier {
 }
 ```
 
-###### 4.2.2.3 NettyRpcEndpointRef.ask（向目标Endpoint发送Rpc请求）
+##### 4.2.3 NettyRpcEndpointRef.ask
+
+NettyRpcEndpointRef.ask 将消息封装成RequestMessage，在调用NettyRpcEnv.ask， 具体代码如下：
+
+```scala
+
+def ask[T: ClassTag](message: Any, timeout: RpcTimeout): Future[T] = {
+   nettyEnv.ask(new RequestMessage(nettyEnv.address, this, message), timeout)
+}
+  
+```  
+
+RequestMessage是一个比价重要的类，所有待发送的消息都会封装成RequestMessage，RequestMessage会将发送者地址、接收者的地址、消息序列化，所有待接收的消息都会反序列化发送者、接收者的地址、消息
+
+```scala
+private[netty] class RequestMessage(
+    val senderAddress: RpcAddress,
+    val receiver: NettyRpcEndpointRef,
+    val content: Any) {
+
+  //序列化
+  def serialize(nettyEnv: NettyRpcEnv): ByteBuffer = {
+    val bos = new ByteBufferOutputStream()
+    val out = new DataOutputStream(bos)
+    try {
+      writeRpcAddress(out, senderAddress)
+      writeRpcAddress(out, receiver.address)
+      out.writeUTF(receiver.name)
+      val s = nettyEnv.serializeStream(out)
+      try {
+        s.writeObject(content)
+      } finally {
+        s.close()
+      }
+    } finally {
+      out.close()
+    }
+    bos.toByteBuffer
+  }
+
+  private def writeRpcAddress(out: DataOutputStream, rpcAddress: RpcAddress): Unit = {
+    if (rpcAddress == null) {
+      out.writeBoolean(false)
+    } else {
+      out.writeBoolean(true)
+      out.writeUTF(rpcAddress.host)
+      out.writeInt(rpcAddress.port)
+    }
+  }
+
+  override def toString: String = s"RequestMessage($senderAddress, $receiver, $content)"
+}
+
+private[netty] object RequestMessage {
+
+  private def readRpcAddress(in: DataInputStream): RpcAddress = {
+    val hasRpcAddress = in.readBoolean()
+    if (hasRpcAddress) {
+      RpcAddress(in.readUTF(), in.readInt())
+    } else {
+      null
+    }
+  }
+  // 反序列化
+  def apply(nettyEnv: NettyRpcEnv, client: TransportClient, bytes: ByteBuffer): RequestMessage = {
+    val bis = new ByteBufferInputStream(bytes)
+    val in = new DataInputStream(bis)
+    try {
+      val senderAddress = readRpcAddress(in)
+      val endpointAddress = RpcEndpointAddress(readRpcAddress(in), in.readUTF())
+      val ref = new NettyRpcEndpointRef(nettyEnv.conf, endpointAddress, nettyEnv)
+      ref.client = client
+      new RequestMessage(
+        senderAddress,
+        ref,
+        // The remaining bytes in `bytes` are the message content.
+        nettyEnv.deserialize(client, bytes))
+    } finally {
+      in.close()
+    }
+  }
+}
+```
+###### 4.2.4 NettyRpcEnv.ask
+
+NettyRpcEnv.ask的主要工作，如果目标Endpoint等于发送Endpoint，通过Dispatcher.postLocalMessage将消息路由到向相应的Inbox，否则将RpcMessage封装成OutBoxMessage，主要是工作是序列化RpcMessage，注册回调函数，然后调用NettyRpcEnv.postToOutbox进行数据发送
+
+NettyRpcEnv.ask
+
+```scala
+ private[netty] def ask[T: ClassTag](message: RequestMessage, timeout: RpcTimeout): Future[T] = {
+    val promise = Promise[Any]()
+    val remoteAddr = message.receiver.address
+
+    def onFailure(e: Throwable): Unit = {
+      if (!promise.tryFailure(e)) {
+        e match {
+          case e : RpcEnvStoppedException => logDebug (s"Ignored failure: $e")
+          case _ => logWarning(s"Ignored failure: $e")
+        }
+      }
+    }
+
+    def onSuccess(reply: Any): Unit = reply match {
+      case RpcFailure(e) => onFailure(e)
+      case rpcReply =>
+        if (!promise.trySuccess(rpcReply)) {
+          logWarning(s"Ignored message: $reply")
+        }
+    }
+
+    try {
+      if (remoteAddr == address) {
+        val p = Promise[Any]()
+        p.future.onComplete {
+          case Success(response) => onSuccess(response)
+          case Failure(e) => onFailure(e)
+        }(ThreadUtils.sameThread)
+        dispatcher.postLocalMessage(message, p)
+      } else {
+        val rpcMessage = RpcOutboxMessage(message.serialize(this),
+          onFailure,
+          (client, response) => onSuccess(deserialize[Any](client, response)))
+        postToOutbox(message.receiver, rpcMessage)
+        promise.future.failed.foreach {
+          case _: TimeoutException => rpcMessage.onTimeout()
+          case _ =>
+        }(ThreadUtils.sameThread)
+      }
+
+      val timeoutCancelable = timeoutScheduler.schedule(new Runnable {
+        override def run(): Unit = {
+          onFailure(new TimeoutException(s"Cannot receive any reply from ${remoteAddr} " +
+            s"in ${timeout.duration}"))
+        }
+      }, timeout.duration.toNanos, TimeUnit.NANOSECONDS)
+      promise.future.onComplete { v =>
+        timeoutCancelable.cancel(true)
+      }(ThreadUtils.sameThread)
+    } catch {
+      case NonFatal(e) =>
+        onFailure(e)
+    }
+    promise.future.mapTo[T].recover(timeout.addMessageIfTimeout)(ThreadUtils.sameThread)
+  }
+
+
+```
+
+###### 4.2.5 NettyRpcEnv.postToOutbox（目标RpcEndPoint在其他机器）
+
+
+如果NettyRpcEndpointRef的TransportClient已经初始化，直接通过OutboxMessage.sendWith进行消息的发送, 否则构建Outbox，然后调用Outbox.send进行数据发送
+
+
+```scala
+  private def postToOutbox(receiver: NettyRpcEndpointRef, message: OutboxMessage): Unit = {
+    if (receiver.client != null) {
+      message.sendWith(receiver.client)
+    } else {
+      require(receiver.address != null,
+        "Cannot send message to client endpoint with no listen address.")
+      val targetOutbox = {
+        val outbox = outboxes.get(receiver.address)
+        if (outbox == null) {
+          val newOutbox = new Outbox(this, receiver.address)
+          val oldOutbox = outboxes.putIfAbsent(receiver.address, newOutbox)
+          if (oldOutbox == null) {
+            newOutbox
+          } else {
+            oldOutbox
+          }
+        } else {
+          outbox
+        }
+      }
+      if (stopped.get) {
+        // It's possible that we put `targetOutbox` after stopping. So we need to clean it.
+        outboxes.remove(receiver.address)
+        targetOutbox.stop()
+      } else {
+        targetOutbox.send(message)
+      }
+    }
+  }
+  
+``` 
+
+###### 4.2.5 Outbox.send（目标RpcEndPoint在其他机器）
+
+Outbox.send会将OutboxMessage放入Outbox消息列表，真正的数据发送通过调用Outbox.drainOutbox， 代码如下：
+
+```scala
+
+  def send(message: OutboxMessage): Unit = {
+    val dropped = synchronized {
+      if (stopped) {
+        true
+      } else {
+        messages.add(message)
+        false
+      }
+    }
+    if (dropped) {
+      message.onFailure(new SparkException("Message is dropped because Outbox is stopped"))
+    } else {
+      drainOutbox()
+    }
+  }
+  
+```
+
+###### 4.2.6 Outbox.drainOutbox
+
+如果TransportClient没有初始化，会先进行TransportClient进行初始化，然后在调用OutboxMessage.sendWith进行数据发送
+
+
+```scala
+
+private def drainOutbox(): Unit = {
+    var message: OutboxMessage = null
+    synchronized {
+      if (stopped) {
+        return
+      }
+      if (connectFuture != null) {
+        // We are connecting to the remote address, so just exit
+        return
+      }
+      if (client == null) {
+        // There is no connect task but client is null, so we need to launch the connect task.
+        launchConnectTask()
+        return
+      }
+      if (draining) {
+        // There is some thread draining, so just exit
+        return
+      }
+      message = messages.poll()
+      if (message == null) {
+        return
+      }
+      draining = true
+    }
+    while (true) {
+      try {
+        val _client = synchronized { client }
+        if (_client != null) {
+          message.sendWith(_client)
+        } else {
+          assert(stopped == true)
+        }
+      } catch {
+        case NonFatal(e) =>
+          handleNetworkFailure(e)
+          return
+      }
+      synchronized {
+        if (stopped) {
+          return
+        }
+        message = messages.poll()
+        if (message == null) {
+          draining = false
+          return
+        }
+      }
+    }
+  }
+
+
+```
+ 
 
 
 
