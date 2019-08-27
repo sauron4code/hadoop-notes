@@ -586,4 +586,201 @@ private def drainOutbox(): Unit = {
 
 
 
-##### 4.3 In方向处(接收数据)理流程
+##### 4.3 In方向处理流程(接收数据)
+
+##### 4.3.1 In方向主要链路的代码
+
+```
+      			     NettyRpcHandler.receive                               
+                            |
+                            |
+                            V   		
+      				NettyRpcHandler.internalReceive 
+                            |
+                            |
+                            V   
+                Dispatcher.postRemoteMessage   
+                            |
+                            |
+                            V   
+  					Dispatcher.postMessage
+                            |
+                            |
+                            V  
+              			MessageLoop      
+                            |
+                            |
+                            V   
+                    	Inbox.process      
+```
+
+##### 4.3.2 NettyRpcHandler.receive & NettyRpcHandler.internalReceive
+
+NettyRpcHandler继承了RpcHandler抽象类，是In方向的入口，调用了internalReceive构造了RequestMessage， 然后再调用Dispatcher.postRemoteMessage将Request路由到相应的Inbox
+
+```scala
+
+ def receive(
+      client: TransportClient,
+      message: ByteBuffer,
+      callback: RpcResponseCallback): Unit = {
+      //构造RequestMessage
+    val messageToDispatch = internalReceive(client, message)
+    //调用Dispatcher进行消息路由
+    dispatcher.postRemoteMessage(messageToDispatch, callback)
+  }
+
+
+  private def internalReceive(client: TransportClient, message: ByteBuffer): RequestMessage = {
+    val addr = client.getChannel().remoteAddress().asInstanceOf[InetSocketAddress]
+    assert(addr != null)
+    val clientAddr = RpcAddress(addr.getHostString, addr.getPort)
+    val requestMessage = RequestMessage(nettyEnv, client, message)
+    //发送端没有启动Transport
+    if (requestMessage.senderAddress == null) {
+      // Create a new message with the socket address of the client as the sender.
+      new RequestMessage(clientAddr, requestMessage.receiver, requestMessage.content)
+    } else {
+      // The remote RpcEnv listens to some port, we should also fire a RemoteProcessConnected for
+      // the listening address
+      val remoteEnvAddress = requestMessage.senderAddress
+      if (remoteAddresses.putIfAbsent(clientAddr, remoteEnvAddress) == null) {
+        dispatcher.postToAll(RemoteProcessConnected(remoteEnvAddress))
+      }
+      requestMessage
+    }
+  }
+```
+
+
+##### 4.3.3 Dispatcher.postRemoteMessage
+构造RpcCallContext&RpcMessage，然后调用Dispatcher.postMessage将消息路由相应的Inbox
+
+```scala
+  def postRemoteMessage(message: RequestMessage, callback: RpcResponseCallback): Unit = {
+    val rpcCallContext =
+      new RemoteNettyRpcCallContext(nettyEnv, callback, message.senderAddress)
+    val rpcMessage = RpcMessage(message.senderAddress, message.content, rpcCallContext)
+    postMessage(message.receiver.name, rpcMessage, (e) => callback.onFailure(e))
+  }
+```
+
+
+##### 4.3.4  Dispatcher.postMessage 
+
+
+将RpcMessage放入相应的Inbox消息列表，Inbox消息列表MessageLoop线程处理
+
+```scala
+private def postMessage(
+      endpointName: String,
+      message: InboxMessage,
+      callbackIfStopped: (Exception) => Unit): Unit = {
+    val error = synchronized {
+      val data = endpoints.get(endpointName)
+      if (stopped) {
+        Some(new RpcEnvStoppedException())
+      } else if (data == null) {
+        Some(new SparkException(s"Could not find $endpointName."))
+      } else {
+        data.inbox.post(message)
+        receivers.offer(data)
+        None
+      }
+    }
+    // We don't need to call `onStop` in the `synchronized` block
+    error.foreach(callbackIfStopped)
+  }
+
+```
+  
+##### 4.3.5 Inbox.process 
+
+更具消息类型执行相应的处理
+
+
+```scala
+  def process(dispatcher: Dispatcher): Unit = {
+    var message: InboxMessage = null
+    inbox.synchronized {
+      if (!enableConcurrent && numActiveThreads != 0) {
+        return
+      }
+      message = messages.poll()
+      if (message != null) {
+        numActiveThreads += 1
+      } else {
+        return
+      }
+    }
+    while (true) {
+      safelyCall(endpoint) {
+        message match {
+          case RpcMessage(_sender, content, context) =>
+            try {
+              endpoint.receiveAndReply(context).applyOrElse[Any, Unit](content, { msg =>
+                throw new SparkException(s"Unsupported message $message from ${_sender}")
+              })
+            } catch {
+              case e: Throwable =>
+                context.sendFailure(e)
+                // Throw the exception -- this exception will be caught by the safelyCall function.
+                // The endpoint's onError function will be called.
+                throw e
+            }
+
+          case OneWayMessage(_sender, content) =>
+            endpoint.receive.applyOrElse[Any, Unit](content, { msg =>
+              throw new SparkException(s"Unsupported message $message from ${_sender}")
+            })
+
+          case OnStart =>
+            endpoint.onStart()
+            if (!endpoint.isInstanceOf[ThreadSafeRpcEndpoint]) {
+              inbox.synchronized {
+                if (!stopped) {
+                  enableConcurrent = true
+                }
+              }
+            }
+
+          case OnStop =>
+            val activeThreads = inbox.synchronized { inbox.numActiveThreads }
+            assert(activeThreads == 1,
+              s"There should be only a single active thread but found $activeThreads threads.")
+            dispatcher.removeRpcEndpointRef(endpoint)
+            endpoint.onStop()
+            assert(isEmpty, "OnStop should be the last message")
+
+          case RemoteProcessConnected(remoteAddress) =>
+            endpoint.onConnected(remoteAddress)
+
+          case RemoteProcessDisconnected(remoteAddress) =>
+            endpoint.onDisconnected(remoteAddress)
+
+          case RemoteProcessConnectionError(cause, remoteAddress) =>
+            endpoint.onNetworkError(cause, remoteAddress)
+        }
+      }
+
+      inbox.synchronized {
+        // "enableConcurrent" will be set to false after `onStop` is called, so we should check it
+        // every time.
+        if (!enableConcurrent && numActiveThreads != 1) {
+          // If we are not the only one worker, exit
+          numActiveThreads -= 1
+          return
+        }
+        message = messages.poll()
+        if (message == null) {
+          numActiveThreads -= 1
+          return
+        }
+      }
+    }
+  }
+
+```  
+
+
+
