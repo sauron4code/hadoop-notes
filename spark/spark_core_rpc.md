@@ -591,27 +591,27 @@ private def drainOutbox(): Unit = {
 ##### 4.3.1 In方向主要链路的代码
 
 ```
-      			     NettyRpcHandler.receive                               
+                  NettyRpcHandler.receive                               
                             |
                             |
                             V   		
-      				NettyRpcHandler.internalReceive 
+      		NettyRpcHandler.internalReceive 
                             |
                             |
                             V   
-                Dispatcher.postRemoteMessage   
+               Dispatcher.postRemoteMessage   
                             |
                             |
                             V   
-  					Dispatcher.postMessage
+                    Dispatcher.postMessage
                             |
                             |
                             V  
-              			MessageLoop      
+                        MessageLoop      
                             |
                             |
                             V   
-                    	Inbox.process      
+                        Inbox.process      
 ```
 
 ##### 4.3.2 NettyRpcHandler.receive & NettyRpcHandler.internalReceive
